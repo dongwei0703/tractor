@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import type { Card, Suit, Seat, GamePhase, Difficulty, TrickPlay, BidInfo, RoundResult, PlayerInfo, Team, DealStep } from '@/game/types'
 import { PLAYER_NAMES, SEAT_TEAMS, DEAL_SPEED_MS, BID_WINDOW_MS, AI_PLAY_DELAY_MS } from '@/game/constants'
 import { createDeck, shuffleDeck, generateDealSequence, getBottomCards, sortHand, removeCards, addCards } from '@/game/deck'
@@ -7,10 +7,6 @@ import { getValidLeads, type LegalPlay } from '@/game/rules'
 import { determineTrickWinner } from '@/game/trick'
 import { countTrickPoints, calculateLevelChange } from '@/game/scoring'
 import { shouldBid, selectPlay } from '@/game/ai'
-
-interface AutoPlayState {
-  timerId: ReturnType<typeof setTimeout> | null
-}
 
 export const useGameStore = defineStore('game', {
   state: () => ({
@@ -43,6 +39,10 @@ export const useGameStore = defineStore('game', {
     autoPlayTimer: null as ReturnType<typeof setTimeout> | null,
     dealingInterval: null as ReturnType<typeof setInterval> | null,
     selectedCards: [] as Card[],
+    bottomSelectedCards: [] as Card[],
+    bidAnnouncement: null as { bidder: Seat; suit: Suit | 'fixed'; isPair: boolean } | null,
+    trickEnd: false,
+    trickWinner: null as Seat | null,
   }),
   getters: {
     playerHand(state): Card[] {
@@ -97,6 +97,10 @@ export const useGameStore = defineStore('game', {
       this.bidHistory = []
       this.hasBid = false
       this.selectedCards = []
+      this.bottomSelectedCards = []
+      this.bidAnnouncement = null
+      this.trickEnd = false
+      this.trickWinner = null
       this.hands = [[], [], [], []]
       const deck = shuffleDeck(createDeck())
       this.dealingQueue = generateDealSequence(deck)
@@ -116,16 +120,13 @@ export const useGameStore = defineStore('game', {
       }
       const step = this.dealingQueue[this.dealingIndex]
       this.hands[step.targetSeat] = addCards(this.hands[step.targetSeat], [step.card])
-      // Sort player's hand
       if (step.targetSeat === 0) {
         this.hands[0] = sortHand(this.hands[0], this.trumpSuit, this.trumpRank)
       }
       this.dealingIndex++
-      // Check AI bid during dealing
       if (!this.hasBid) {
         const bidSeat = step.targetSeat
         if (bidSeat !== 0) {
-          // AI bid check
           const existingBid = this.bidHistory.length > 0 ? this.bidHistory[this.bidHistory.length - 1] : null
           const bid = shouldBid(this.hands[bidSeat], this.currentLevel, existingBid, this.difficulty)
           if (bid) {
@@ -143,32 +144,39 @@ export const useGameStore = defineStore('game', {
       if (this.hasBid) {
         this.phase = 'bottom_cards'
         this.currentPlayer = this.dealer
-        this.scheduleAutoPlay()
+        this.bottomSelectedCards = []
+        this.bidAnnouncement = null
+        if (this.dealer !== 0) {
+          this.scheduleAutoPlay()
+        }
       } else {
         this.phase = 'bidding'
         this.startForcedBidding()
       }
     },
     startForcedBidding() {
-      // Reveal bottom cards one by one
       if (this.bottomCards.length > 0) {
         const first = this.bottomCards[0]
+        const forcedDealer: Seat = (Math.floor(Math.random() * 4)) as Seat
         if (first.suit !== 'joker') {
           this.trumpSuit = first.suit
-          this.trumpRank = this.currentLevel
-          this.dealer = 0
-          this.hasBid = true
-          this.bidHistory = [{ bidder: 0, suit: first.suit, isPair: false, pairCount: 1 }]
         } else {
           this.trumpSuit = 'fixed'
-          this.trumpRank = this.currentLevel
-          this.dealer = 0
-          this.hasBid = true
-          this.bidHistory = [{ bidder: 0, suit: 'fixed', isPair: false, pairCount: 1 }]
         }
-        this.hands[0] = sortHand(this.hands[0], this.trumpSuit, this.trumpRank)
+        this.trumpRank = this.currentLevel
+        this.dealer = forcedDealer
+        this.hasBid = true
+        this.bidHistory = [{ bidder: forcedDealer, suit: this.trumpSuit, isPair: false, pairCount: 1 }]
+        this.bidAnnouncement = { bidder: forcedDealer, suit: this.trumpSuit!, isPair: false }
+        for (let s = 0; s < 4; s++) {
+          this.hands[s] = sortHand(this.hands[s], this.trumpSuit, this.trumpRank)
+        }
         this.phase = 'bottom_cards'
-        this.scheduleAutoPlay()
+        this.currentPlayer = forcedDealer
+        this.bottomSelectedCards = []
+        if (forcedDealer !== 0) {
+          this.scheduleAutoPlay()
+        }
       }
     },
     playerBid(suit: Suit | 'fixed', isPair: boolean) {
@@ -183,10 +191,24 @@ export const useGameStore = defineStore('game', {
       this.trumpSuit = bid.suit
       this.trumpRank = this.currentLevel
       this.dealer = bid.bidder
-      // Re-sort all hands with new trump info
+      this.bidAnnouncement = { bidder: bid.bidder, suit: bid.suit, isPair: bid.isPair }
       for (let s = 0; s < 4; s++) {
         this.hands[s] = sortHand(this.hands[s], this.trumpSuit, this.trumpRank)
       }
+    },
+    toggleBottomCardSelection(card: Card) {
+      if (this.phase !== 'bottom_cards' || this.dealer !== 0) return
+      const idx = this.bottomSelectedCards.findIndex(c => c.id === card.id)
+      if (idx >= 0) {
+        this.bottomSelectedCards.splice(idx, 1)
+      } else if (this.bottomSelectedCards.length < 8) {
+        this.bottomSelectedCards.push(card)
+      }
+    },
+    confirmBottomCards() {
+      if (this.bottomSelectedCards.length !== 8) return
+      this.setBottomCards(this.bottomSelectedCards)
+      this.bottomSelectedCards = []
     },
     setBottomCards(cards: Card[]) {
       this.hands[this.dealer!] = removeCards(this.hands[this.dealer!], cards)
@@ -196,16 +218,27 @@ export const useGameStore = defineStore('game', {
       this.currentTrick = []
       this.trickNumber = 1
       this.hands[0] = sortHand(this.hands[0], this.trumpSuit, this.trumpRank)
-      this.scheduleAutoPlay()
+      if (this.dealer !== 0) {
+        this.scheduleAutoPlay()
+      }
     },
     playSelectedCards() {
       if (this.selectedCards.length === 0) return
+
+      // Validate play: must match current trick lead count or be a valid lead
+      if (this.currentTrick.length === 0) {
+        const validLeads = getValidLeads(this.hands[0], this.trumpSuit, this.trumpRank)
+        const selectedIds = new Set(this.selectedCards.map(c => c.id))
+        const isValid = validLeads.some(lp => lp.cards.every(c => selectedIds.has(c.id)))
+        if (!isValid) return
+      } else if (this.selectedCards.length !== this.currentTrick[0].cards.length) {
+        return
+      }
       this.playerPlay(this.selectedCards)
       this.selectedCards = []
     },
     playerPlay(cards: Card[]) {
       if (this.currentPlayer !== 0) return
-      const leadCard = cards[0]
       const playType: 'single' | 'pair' | 'tractor' = cards.length === 1 ? 'single' : cards.length === 2 ? 'pair' : 'tractor'
       const play: TrickPlay = { seat: 0, cards, playType }
       this.currentTrick.push(play)
@@ -215,7 +248,6 @@ export const useGameStore = defineStore('game', {
     },
     advanceTurn() {
       if (this.currentTrick.length >= 4) {
-        // Trick complete
         this.finishTrick()
         return
       }
@@ -227,7 +259,7 @@ export const useGameStore = defineStore('game', {
     },
     scheduleAutoPlay() {
       if (this.autoPlayTimer) clearTimeout(this.autoPlayTimer)
-      if (this.currentPlayer === 0) return
+      if (this.currentPlayer === 0 || this.currentPlayer === null) return
       const delay = this.phase === 'playing'
         ? AI_PLAY_DELAY_MS[this.difficulty]
         : 400
@@ -237,7 +269,7 @@ export const useGameStore = defineStore('game', {
     },
     doAutoPlay() {
       const seat = this.currentPlayer!
-      if (seat === 0) return
+      if (seat === 0 || seat === null) return
       if (this.phase === 'bottom_cards') {
         this.aiSelectBottomCards(seat)
         return
@@ -251,7 +283,7 @@ export const useGameStore = defineStore('game', {
           seat,
           this.difficulty,
         )
-        const leadCard = cards[0]
+        if (cards.length === 0) return
         const playType: 'single' | 'pair' | 'tractor' = cards.length === 1 ? 'single' : cards.length === 2 ? 'pair' : 'tractor'
         const play: TrickPlay = { seat, cards, playType }
         this.currentTrick.push(play)
@@ -260,8 +292,6 @@ export const useGameStore = defineStore('game', {
       }
     },
     aiSelectBottomCards(seat: Seat) {
-      // AI selects 8 cards for bottom
-      // Simple strategy: discard weakest cards
       const hand = [...this.hands[seat]]
       hand.sort((a, b) => {
         if (isTrump(a, this.trumpSuit, this.trumpRank) === isTrump(b, this.trumpSuit, this.trumpRank)) {
@@ -272,16 +302,15 @@ export const useGameStore = defineStore('game', {
       const bottom = hand.slice(0, 8)
       this.hands[seat] = removeCards(this.hands[seat], bottom)
       this.bottomCards = bottom
-      // After setting bottom cards, enter playing phase
       if (this.phase === 'bottom_cards') {
         this.phase = 'playing'
         this.currentPlayer = this.dealer
         this.currentTrick = []
         this.trickNumber = 1
         this.hands[0] = sortHand(this.hands[0], this.trumpSuit, this.trumpRank)
-      }
-      if (this.currentPlayer !== 0) {
-        this.scheduleAutoPlay()
+        if (this.dealer !== 0) {
+          this.scheduleAutoPlay()
+        }
       }
     },
     finishTrick() {
@@ -292,11 +321,22 @@ export const useGameStore = defineStore('game', {
       this.pointsCollected[idx] += pts
       this.tricksWon[idx]++
       this.currentPlayer = winner
+      this.trickWinner = winner
+      this.trickEnd = true
+    },
+    nextTrick() {
+      if (this.trickNumber >= 25) {
+        this.trickEnd = false
+        this.trickWinner = null
+        this.currentTrick = []
+        this.endRound()
+        return
+      }
+      this.trickEnd = false
+      this.trickWinner = null
       this.currentTrick = []
       this.trickNumber++
-      if (this.trickNumber > 25) {
-        this.endRound()
-      } else if (this.currentPlayer !== 0) {
+      if (this.currentPlayer !== 0) {
         this.scheduleAutoPlay()
       }
     },
@@ -308,14 +348,8 @@ export const useGameStore = defineStore('game', {
       this.theirLevel = result.newTheirLevel
       this.roundResults.push(result)
       this.phase = 'round_end'
-      if (this.autoPlayTimer) {
-        clearTimeout(this.autoPlayTimer)
-        this.autoPlayTimer = null
-      }
-      if (this.dealingInterval) {
-        clearInterval(this.dealingInterval)
-        this.dealingInterval = null
-      }
+      if (this.autoPlayTimer) { clearTimeout(this.autoPlayTimer); this.autoPlayTimer = null }
+      if (this.dealingInterval) { clearInterval(this.dealingInterval); this.dealingInterval = null }
     },
     restart() {
       if (this.autoPlayTimer) clearTimeout(this.autoPlayTimer)
@@ -324,6 +358,10 @@ export const useGameStore = defineStore('game', {
       this.dealingInterval = null
       this.phase = 'start'
       this.selectedCards = []
+      this.bottomSelectedCards = []
+      this.bidAnnouncement = null
+      this.trickEnd = false
+      this.trickWinner = null
     },
     nextRound() {
       if (this.autoPlayTimer) clearTimeout(this.autoPlayTimer)

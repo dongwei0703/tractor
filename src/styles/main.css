@@ -1,4 +1,4 @@
-ï»¿* {
+* {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -8,7 +8,7 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: "Microsoft YaHei", "å¾®è½¯é›…é»‘", SimHei, sans-serif;
+  font-family: "Microsoft YaHei", "Î¢ÈíÑÅºÚ", SimHei, sans-serif;
 }
 
 #app {
@@ -467,13 +467,7 @@ html, body {
 /* ============================================ */
 /* BiddingPanel */
 /* ============================================ */
-.bidding-panel-overlay {
-  position: absolute;
-  bottom: 200px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 15;
-}
+.bidding-panel-overlay { position: absolute; bottom: 280px; left: 50%; transform: translateX(-50%); z-index: 15; }
 .bidding-panel {
   background: rgba(0,0,0,0.7);
   border: 1px solid rgba(212, 168, 83, 0.4);
@@ -572,4 +566,100 @@ html, body {
 }
 .round-result__btn:hover {
   background: #e0b860;
+}
+
+
+/* ===== Bid Announcement ===== */
+.bid-announce-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.bid-announce-card {
+  background: linear-gradient(135deg, #1e3a1e, #2d5a2d);
+  border: 3px solid #d4a853;
+  border-radius: 12px;
+  padding: 32px 48px;
+  text-align: center;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), 0 0 60px rgba(212, 168, 83, 0.3);
+  animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.bid-announce__player {
+  font-size: 28px;
+  font-weight: 700;
+  color: #f0d78c;
+  margin-bottom: 8px;
+}
+
+.bid-announce__action {
+  font-size: 18px;
+  color: #e0c068;
+  margin-bottom: 12px;
+  letter-spacing: 4px;
+}
+
+.bid-announce__suit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.bid-announce__symbol {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.bid-announce__name {
+  font-size: 20px;
+  color: #f0d78c;
+}
+
+/* ===== Trick End ===== */
+.center-area__trick-end {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.trick-end__winner {
+  font-size: 18px;
+  color: #b8d4a0;
+  font-weight: 600;
+}
+
+.trick-end__name {
+  color: #f0d78c;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.trick-end__btn {
+  background: linear-gradient(135deg, #d4a853, #e0c068);
+  color: #1a1a2e;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 48px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  box-shadow: 0 4px 16px rgba(212, 168, 83, 0.3);
+}
+
+.trick-end__btn:hover {
+  background: linear-gradient(135deg, #e0c068, #f0d78c);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(212, 168, 83, 0.5);
 }

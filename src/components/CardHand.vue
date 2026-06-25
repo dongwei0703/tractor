@@ -1,11 +1,14 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed } from "vue"
 import { useGameStore } from "@/store/game"
-import { isTrump } from "@/game/comparator"
 import CardComponent from "./CardComponent.vue"
 import type { Card } from "@/game/types"
 
 const store = useGameStore()
+
+const inBottomPhase = computed(() =>
+  store.phase === "bottom_cards" && store.dealer === 0
+)
 
 const groupedHand = computed(() => {
   const hand = store.playerHand
@@ -13,58 +16,75 @@ const groupedHand = computed(() => {
   if (hand.length === 0) return groups
 
   const trumpSuit = store.trumpSuit
-  const trumpRank = store.trumpRank
-
-  // Group 0: Big jokers
   const group0 = hand.filter(c => c.rank === 16)
   if (group0.length > 0) groups.push({ label: "大王", cards: group0 })
-
-  // Group 1: Small jokers
   const group1 = hand.filter(c => c.rank === 15)
   if (group1.length > 0) groups.push({ label: "小王", cards: group1 })
-
-  // Group 2: Level cards (常主)
-  const group2 = hand.filter(c => c.rank === store.currentLevel && c.suit !== "joker")
-  if (group2.length > 0) groups.push({ label: "常主", cards: group2 })
-
-  // Group 3: Trump suit cards
+  const group2 = hand.filter(c => c.rank === store.currentLevel && (c.suit as string) !== "joker")
+  if (group2.length > 0) groups.push({ label: "级牌", cards: group2 })
   if (trumpSuit && trumpSuit !== "fixed") {
-    const group3 = hand.filter(c => c.suit === trumpSuit && c.rank !== store.currentLevel && c.suit !== "joker")
+    const group3 = hand.filter(c => c.suit === trumpSuit && c.rank !== store.currentLevel && (c.suit as string) !== "joker")
     if (group3.length > 0) groups.push({ label: "将牌", cards: group3 })
   }
-
-  // Groups 4-7: Side suits
   const sideSuits: Array<{ suit: "spades" | "hearts" | "clubs" | "diamonds"; symbol: string }> = [
-    { suit: "spades", symbol: "♠" },
-    { suit: "hearts", symbol: "♥" },
-    { suit: "clubs", symbol: "♣" },
-    { suit: "diamonds", symbol: "♦" },
+    { suit: "spades", symbol: "\u2660" },
+    { suit: "hearts", symbol: "\u2665" },
+    { suit: "clubs", symbol: "\u2663" },
+    { suit: "diamonds", symbol: "\u2666" },
   ]
   for (const { suit, symbol } of sideSuits) {
     const cards = hand.filter(c => c.suit === suit && c.rank !== store.currentLevel)
     if (trumpSuit !== null && trumpSuit !== "fixed" && suit === trumpSuit) continue
     if (cards.length > 0) groups.push({ label: symbol, cards })
   }
-
   return groups
 })
 
-function onCardClick(card: Card) {
-  if (store.phase !== "playing" || !store.isPlayerTurn) return
-  store.toggleCardSelection(card)
+function isCardSelected(card: Card): boolean {
+  if (inBottomPhase.value) {
+    return store.bottomSelectedCards.some(c => c.id === card.id)
+  }
+  return store.selectedCards.some(c => c.id === card.id)
 }
 
-function canPlay(): boolean {
+function onCardClick(card: Card) {
+  if (inBottomPhase.value) {
+    store.toggleBottomCardSelection(card)
+  } else if (store.phase === "playing" && store.isPlayerTurn) {
+    store.toggleCardSelection(card)
+  }
+}
+
+function handleAction() {
+  if (inBottomPhase.value) {
+    store.confirmBottomCards()
+  } else {
+    store.playSelectedCards()
+  }
+}
+
+function canAct(): boolean {
+  if (inBottomPhase.value) {
+    return store.bottomSelectedCards.length === 8
+  }
   return store.selectedCards.length > 0 && store.isPlayerTurn && store.phase === "playing"
 }
 
-function playCards() {
-  store.playSelectedCards()
+function actionLabel(): string {
+  if (inBottomPhase.value) {
+    return "扣底 (" + store.bottomSelectedCards.length + "/8)"
+  }
+  return "出牌 (" + store.selectedCards.length + ")"
+}
+
+function isActive(): boolean {
+  return inBottomPhase.value || (store.isPlayerTurn && store.phase === "playing")
 }
 </script>
 
 <template>
   <div class="card-hand" v-if="groupedHand.length > 0">
+    <div v-if="inBottomPhase" class="card-hand__hint">请选择 8 张底牌</div>
     <div class="card-hand__groups">
       <div
         v-for="(group, gi) in groupedHand"
@@ -78,22 +98,34 @@ function playCards() {
             v-for="card in group.cards"
             :key="card.id"
             :card="{ ...card, faceUp: true }"
-            :selected="store.selectedCards.some(c => c.id === card.id)"
+            :selected="isCardSelected(card)"
             @click="onCardClick"
           />
         </div>
       </div>
     </div>
     <button
-      v-if="store.isPlayerTurn && store.phase === 'playing'"
+      v-if="isActive()"
       class="play-btn"
-      :disabled="!canPlay()"
-      @click="playCards"
+      :disabled="!canAct()"
+      @click="handleAction"
     >
-      出牌 ({{ store.selectedCards.length }})
+      {{ actionLabel() }}
     </button>
   </div>
   <div class="card-hand card-hand--empty" v-else-if="store.phase !== 'start'">
-    <p class="card-hand__empty-msg">暂无手牌</p>
+    <p class="card-hand__empty-msg">手牌已出完</p>
   </div>
 </template>
+
+<style scoped>
+.card-hand__hint {
+  color: #d4a853;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 6px 16px;
+  background: rgba(212,168,83,0.15);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+</style>

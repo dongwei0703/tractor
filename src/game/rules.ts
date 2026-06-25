@@ -138,12 +138,16 @@ function followPair(
       if (trumpPairs.length > 0) {
         results.push(...trumpPairs)
       } else {
-        // Discard any 2 non-trump cards
+        // Discard non-trump cards
         const nonTrumps = getNonTrumpCards(hand, trumpSuit, trumpRank)
-        for (let i = 0; i < nonTrumps.length; i++) {
-          for (let j = i + 1; j < nonTrumps.length; j++) {
-            results.push({ cards: [nonTrumps[i], nonTrumps[j]], playType: 'pair' })
+        if (nonTrumps.length >= 2) {
+          for (let i = 0; i < nonTrumps.length; i++) {
+            for (let j = i + 1; j < nonTrumps.length; j++) {
+              results.push({ cards: [nonTrumps[i], nonTrumps[j]], playType: 'pair' })
+            }
           }
+        } else {
+          for (const c of nonTrumps) { results.push({ cards: [c], playType: 'single' }) }
         }
       }
     }
@@ -292,3 +296,4 @@ function areTrumpRanksAdjacent(r1: number, r2: number, trumpSuit: Suit | 'fixed'
   if (i1 === -1 || i2 === -1) return false
   return Math.abs(i2 - i1) === 1
 }
+

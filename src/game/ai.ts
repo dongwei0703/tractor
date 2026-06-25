@@ -24,7 +24,7 @@ export function shouldBid(
     list.push(c)
     bySuit.set(c.suit as Suit, list)
   }
-  if (existingBid) {
+  if (existingBid && existingBid.suit !== 'fixed') {
     const existingSuit = bySuit.get(existingBid.suit)
     if (existingSuit && existingSuit.length >= 2) {
       if (!existingBid.isPair || existingSuit.length >= 4) {
@@ -66,7 +66,7 @@ export function selectPlay(
   const options = trick.length === 0
     ? getValidLeads(hand, trumpSuit, trumpRank)
     : getValidFollows(hand, trick, trumpSuit, trumpRank)
-  if (options.length === 0) return [hand[0]]
+  if (options.length === 0) { const n = trick.length > 0 ? trick[0].cards.length : 1; return hand.slice(0, n) }
   switch (difficulty) {
     case 'easy': return randomPick(options)
     case 'hard': return smartPick(options, trick, trumpSuit, trumpRank)
@@ -97,3 +97,5 @@ function smartPick(
   })
   return sorted[0].cards
 }
+
+
