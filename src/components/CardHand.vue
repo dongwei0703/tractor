@@ -48,6 +48,7 @@ function isCardSelected(card: Card): boolean {
 }
 
 function onCardClick(card: Card) {
+  if (store.trickEnd) return
   if (inBottomPhase.value) {
     store.toggleBottomCardSelection(card)
   } else if (store.phase === "playing" && store.isPlayerTurn) {
@@ -78,7 +79,7 @@ function actionLabel(): string {
 }
 
 function isActive(): boolean {
-  return inBottomPhase.value || (store.isPlayerTurn && store.phase === "playing")
+  return !store.trickEnd && (inBottomPhase.value || (store.isPlayerTurn && store.phase === "playing"))
 }
 </script>
 
@@ -104,6 +105,7 @@ function isActive(): boolean {
         </div>
       </div>
     </div>
+    <div v-if="store.playError" class="play-error">{{ store.playError }}</div>
     <button
       v-if="isActive()"
       class="play-btn"
@@ -127,5 +129,22 @@ function isActive(): boolean {
   background: rgba(212,168,83,0.15);
   border-radius: 4px;
   margin-bottom: 8px;
+}
+
+.play-error {
+  color: #e74c3c;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 6px 12px;
+  background: rgba(231, 76, 60, 0.12);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

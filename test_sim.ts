@@ -41,35 +41,50 @@ for (let r = 1; r <= ROUNDS; r++) {
       trumpRank = 2; dealerSeat = fd; hasBid = true
       for (let s = 0; s < 4; s++) hands[s] = sortHand(hands[s], trumpSuit, trumpRank)
     }
-    // Bottom cards
+    // Bottom cards: 先给庄家加入底牌(25+8=33张)，再扣8张
+    const beforeAdd = hands[dealerSeat].length
+    hands[dealerSeat] = addCards(hands[dealerSeat], bottomCards)
+    const afterAdd = hands[dealerSeat].length
     const dh = [...hands[dealerSeat]]
     dh.sort((a, b) => {
       if (isTrump(a, trumpSuit, trumpRank) === isTrump(b, trumpSuit, trumpRank)) return a.rank - b.rank
       return isTrump(a, trumpSuit, trumpRank) ? 1 : -1
     })
-    hands[dealerSeat] = removeCards(hands[dealerSeat], dh.slice(0, 8))
-    // Playing
+    const toBury = dh.slice(0, 8)
+    hands[dealerSeat] = removeCards(hands[dealerSeat], toBury)
+    const afterBury = hands[dealerSeat].length
+    // 更新 bottomCards 为扣的8张（用于后续计分）
+    bottomCards.length = 0
+    bottomCards.push(...toBury)
+    if (beforeAdd !== 25 || afterAdd !== 33 || afterBury !== 25) {
+      throw new Error(`r${r}: dealerCardCnt before=${beforeAdd} afterAdd=${afterAdd} afterBury=${afterBury}`)
+    }
+    // Playing — 持续出牌直到所有手牌清空（对子/拖拉机可能一轮出多张）
     let cp = dealerSeat
     const pts = [0, 0]
-    for (let tn = 1; tn <= 25; tn++) {
+    let tn = 0
+    while (hands.some(h => h.length > 0)) {
+      tn++
       const trick = []
       for (let turn = 0; turn < 4; turn++) {
         const seat = ((cp + turn) % 4)
-        const cards = selectPlay(hands[seat], trick, trumpSuit, trumpRank, seat, "easy")
-        if (cards.length === 0) throw new Error(`r${r} t${tn}: seat${seat} empty`)
-        const pt = cards.length === 1 ? "single" : cards.length === 2 ? "pair" : "tractor"
-        trick.push({ seat, cards, playType: pt })
-        hands[seat] = removeCards(hands[seat], cards)
+        const legalPlay = selectPlay(hands[seat], trick, trumpSuit, trumpRank, seat, "easy")
+        if (!legalPlay || legalPlay.cards.length === 0) {
+          const leadInfo = trick.length > 0 ? ` leadType=${trick[0].playType} leadSuit=${trick[0].cards[0].suit} leadRank=${trick[0].cards[0].rank}` : ''
+          throw new Error(`r${r} t${tn}: seat${seat} empty handSz=${hands[seat].length} trickLen=${trick.length}${leadInfo}`)
+        }
+        trick.push({ seat, cards: legalPlay.cards, playType: legalPlay.playType, tractorLength: legalPlay.tractorLength })
+        hands[seat] = removeCards(hands[seat], legalPlay.cards)
       }
       const winner = determineTrickWinner(trick, trumpSuit, trumpRank)
       const tp = countTrickPoints(trick)
       pts[winner === 0 || winner === 2 ? 0 : 1] += tp
       cp = winner
     }
-    // Verify
+    // Verify: 所有牌应已出完
     let rem = 0
     for (let s = 0; s < 4; s++) rem += hands[s].length
-    if (rem !== 0) throw new Error(`r${r}: ${rem} cards left`)
+    if (rem !== 0) throw new Error(`r${r}: ${rem} cards left after ${tn} tricks`)
     const ourD = dealerSeat === 0 || dealerSeat === 2
     const ndp = ourD ? pts[1] : pts[0]
     const res = calculateLevelChange(ndp, 2, 2, ourD)

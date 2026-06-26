@@ -35,14 +35,22 @@ export function sameCard(a: Card, b: Card): boolean {
   return a.id === b.id
 }
 
-export function groupCardsByRank(cards: Card[]): Map<number, Card[]> {
-  const groups = new Map<number, Card[]>()
+// 按花色+点数分组（对子必须是同花色同点数，不同花色同点数不算对子）
+// key 格式: "suit|rank"，例如 "spades|5"
+export function groupCardsByRank(cards: Card[]): Map<string, Card[]> {
+  const groups = new Map<string, Card[]>()
   for (const c of cards) {
-    const list = groups.get(c.rank) || []
+    const key = `${c.suit}|${c.rank}`
+    const list = groups.get(key) || []
     list.push(c)
-    groups.set(c.rank, list)
+    groups.set(key, list)
   }
   return groups
+}
+
+// 从分组 key 中解析出点数
+export function getRankFromGroupKey(key: string): number {
+  return parseInt(key.split('|')[1], 10)
 }
 
 export function identifyPlayType(

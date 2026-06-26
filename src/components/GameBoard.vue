@@ -102,14 +102,23 @@ function onNextTrick() {
 
     <!-- Center area -->
     <div class="center-area">
-      <!-- Trick end pause: show winner + continue button -->
-      <div v-if="store.trickEnd" class="center-area__trick-end">
+      <!-- Previous trick recap -->
+      <div v-if="store.previousTrick && store.phase === 'playing'" class="center-area__previous">
+        <span class="previous__label">
+          第{{ store.previousTrickNumber }}轮 ·
+          胜者：{{ store.previousTrickWinner !== null ? playerName(store.previousTrickWinner) : '' }}
+        </span>
+        <PlayedTrick :trick="store.previousTrick" compact />
+      </div>
+
+      <!-- Trick end pause: show winner, click anywhere to continue -->
+      <div v-if="store.trickEnd" class="center-area__trick-end" @click="onNextTrick">
         <div class="trick-end__winner">
           本轮胜者：
           <span class="trick-end__name">{{ store.trickWinner !== null ? playerName(store.trickWinner) : '' }}</span>
         </div>
         <PlayedTrick />
-        <button class="trick-end__btn" @click="onNextTrick">继 续</button>
+        <div class="trick-end__hint">点击任意位置继续</div>
       </div>
 
       <!-- Active trick -->

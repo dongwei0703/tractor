@@ -1,7 +1,7 @@
 import type { TrickPlay, Seat, Suit } from './types'
 import { isTrump, getCardPower } from './comparator'
 
-const typeRank: Record<string, number> = { tractor: 3, pair: 2, single: 1 }
+const typeRank: Record<string, number> = { tractor: 3, pair: 2, single: 1, throw: 0 }
 
 function comparePlay(
   a: TrickPlay, b: TrickPlay,

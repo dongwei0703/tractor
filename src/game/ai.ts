@@ -62,26 +62,26 @@ export function selectPlay(
   trumpRank: number | null,
   _seat: Seat,
   difficulty: Difficulty,
-): Card[] {
+): LegalPlay | null {
   const options = trick.length === 0
     ? getValidLeads(hand, trumpSuit, trumpRank)
     : getValidFollows(hand, trick, trumpSuit, trumpRank)
-  if (options.length === 0) { const n = trick.length > 0 ? trick[0].cards.length : 1; return hand.slice(0, n) }
+  if (options.length === 0) return null
   switch (difficulty) {
     case 'easy': return randomPick(options)
     case 'hard': return smartPick(options, trick, trumpSuit, trumpRank)
     case 'crazy': return smartPick(options, trick, trumpSuit, trumpRank)
   }
 }
-function randomPick(options: LegalPlay[]): Card[] {
-  return options[Math.floor(Math.random() * options.length)].cards
+function randomPick(options: LegalPlay[]): LegalPlay {
+  return options[Math.floor(Math.random() * options.length)]
 }
 function smartPick(
   options: LegalPlay[],
   trick: TrickPlay[],
   trumpSuit: Suit | 'fixed' | null,
   trumpRank: number | null,
-): Card[] {
+): LegalPlay {
   let pointsInTrick = 0
   for (const play of trick) {
     for (const c of play.cards) {
@@ -95,7 +95,7 @@ function smartPick(
     const pb = getCardPower(b.cards[0], trumpSuit, trumpRank)
     return pointsInTrick > 0 ? pb - pa : pa - pb
   })
-  return sorted[0].cards
+  return sorted[0]
 }
 
 

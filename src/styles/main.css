@@ -8,7 +8,7 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: "Microsoft YaHei", "Î¢ÈíÑÅºÚ", SimHei, sans-serif;
+  font-family: "Microsoft YaHei", "Î¢ï¿½ï¿½ï¿½Åºï¿½", SimHei, sans-serif;
 }
 
 #app {
@@ -374,6 +374,52 @@ html, body {
   gap: 4px;
 }
 
+/* Previous trick (compact, dimmed) */
+.played-trick--previous {
+  opacity: 0.55;
+  min-width: auto;
+  min-height: auto;
+}
+.played-trick--previous .trick-position {
+  position: static;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  transform: none;
+  margin: 0 6px;
+}
+.played-trick--previous .trick-position__name {
+  font-size: 10px;
+}
+.played-trick--compact {
+  min-width: auto;
+  min-height: auto;
+}
+.played-trick--compact .trick-position {
+  position: static;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  transform: none;
+  margin: 0 4px;
+}
+
+.center-area__previous {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.previous__label {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+}
+
 /* ============================================ */
 /* ScoreBar */
 /* ============================================ */
@@ -629,6 +675,7 @@ html, body {
   align-items: center;
   gap: 16px;
   padding: 20px;
+  cursor: pointer;
 }
 
 .trick-end__winner {
@@ -643,23 +690,13 @@ html, body {
   font-weight: 700;
 }
 
-.trick-end__btn {
-  background: linear-gradient(135deg, #d4a853, #e0c068);
-  color: #1a1a2e;
-  border: none;
-  border-radius: 8px;
-  padding: 12px 48px;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 8px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s;
-  box-shadow: 0 4px 16px rgba(212, 168, 83, 0.3);
+.trick-end__hint {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  animation: hintPulse 2s ease-in-out infinite;
 }
 
-.trick-end__btn:hover {
-  background: linear-gradient(135deg, #e0c068, #f0d78c);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 24px rgba(212, 168, 83, 0.5);
+@keyframes hintPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
 }

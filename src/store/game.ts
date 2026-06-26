@@ -1,9 +1,9 @@
 ﻿import { defineStore } from 'pinia'
-import type { Card, Suit, Seat, GamePhase, Difficulty, TrickPlay, BidInfo, RoundResult, PlayerInfo, Team, DealStep } from '@/game/types'
+import type { Card, Suit, Seat, GamePhase, Difficulty, TrickPlay, BidInfo, RoundResult, PlayerInfo, Team, DealStep, PlayType } from '@/game/types'
 import { PLAYER_NAMES, SEAT_TEAMS, DEAL_SPEED_MS, BID_WINDOW_MS, AI_PLAY_DELAY_MS } from '@/game/constants'
 import { createDeck, shuffleDeck, generateDealSequence, getBottomCards, sortHand, removeCards, addCards } from '@/game/deck'
 import { isTrump } from '@/game/comparator'
-import { getValidLeads, type LegalPlay } from '@/game/rules'
+import { getValidLeads, getValidFollows, type LegalPlay } from '@/game/rules'
 import { determineTrickWinner } from '@/game/trick'
 import { countTrickPoints, calculateLevelChange } from '@/game/scoring'
 import { shouldBid, selectPlay } from '@/game/ai'
@@ -41,8 +41,12 @@ export const useGameStore = defineStore('game', {
     selectedCards: [] as Card[],
     bottomSelectedCards: [] as Card[],
     bidAnnouncement: null as { bidder: Seat; suit: Suit | 'fixed'; isPair: boolean } | null,
+    playError: null as string | null,
     trickEnd: false,
     trickWinner: null as Seat | null,
+    previousTrick: null as TrickPlay[] | null,
+    previousTrickWinner: null as Seat | null,
+    previousTrickNumber: null as number | null,
   }),
   getters: {
     playerHand(state): Card[] {
@@ -101,6 +105,9 @@ export const useGameStore = defineStore('game', {
       this.bidAnnouncement = null
       this.trickEnd = false
       this.trickWinner = null
+      this.previousTrick = null
+      this.previousTrickWinner = null
+      this.previousTrickNumber = null
       this.hands = [[], [], [], []]
       const deck = shuffleDeck(createDeck())
       this.dealingQueue = generateDealSequence(deck)
@@ -142,6 +149,9 @@ export const useGameStore = defineStore('game', {
         this.dealingInterval = null
       }
       if (this.hasBid) {
+        // 将底牌加入庄家手牌（25+8=33张），庄家再选8张扣底
+        this.hands[this.dealer!] = addCards(this.hands[this.dealer!], this.bottomCards)
+        this.hands[this.dealer!] = sortHand(this.hands[this.dealer!], this.trumpSuit, this.trumpRank)
         this.phase = 'bottom_cards'
         this.currentPlayer = this.dealer
         this.bottomSelectedCards = []
@@ -168,6 +178,8 @@ export const useGameStore = defineStore('game', {
         this.hasBid = true
         this.bidHistory = [{ bidder: forcedDealer, suit: this.trumpSuit, isPair: false, pairCount: 1 }]
         this.bidAnnouncement = { bidder: forcedDealer, suit: this.trumpSuit!, isPair: false }
+        // 将底牌加入庄家手牌（25+8=33张），庄家再选8张扣底
+        this.hands[forcedDealer] = addCards(this.hands[forcedDealer], this.bottomCards)
         for (let s = 0; s < 4; s++) {
           this.hands[s] = sortHand(this.hands[s], this.trumpSuit, this.trumpRank)
         }
@@ -223,27 +235,49 @@ export const useGameStore = defineStore('game', {
       }
     },
     playSelectedCards() {
+      if (this.trickEnd) return
       if (this.selectedCards.length === 0) return
+      this.playError = null
 
-      // Validate play: must match current trick lead count or be a valid lead
+      const selectedIds = new Set(this.selectedCards.map(c => c.id))
+      let matchedPlay: LegalPlay | undefined
+
       if (this.currentTrick.length === 0) {
+        // 首出校验：必须是一个合法的首出牌型
         const validLeads = getValidLeads(this.hands[0], this.trumpSuit, this.trumpRank)
-        const selectedIds = new Set(this.selectedCards.map(c => c.id))
-        const isValid = validLeads.some(lp => lp.cards.every(c => selectedIds.has(c.id)))
-        if (!isValid) return
-      } else if (this.selectedCards.length !== this.currentTrick[0].cards.length) {
-        return
+        matchedPlay = validLeads.find(lp =>
+          lp.cards.length === this.selectedCards.length &&
+          lp.cards.every(c => selectedIds.has(c.id))
+        )
+        if (!matchedPlay) {
+          this.playError = '无效出牌：请选择合法的单张、对子或拖拉机'
+          return
+        }
+      } else {
+        // 跟牌校验：必须符合跟牌规则（花色、牌型、杀牌/垫牌）
+        const validFollows = getValidFollows(
+          this.hands[0], this.currentTrick, this.trumpSuit, this.trumpRank
+        )
+        matchedPlay = validFollows.find(lp =>
+          lp.cards.length === this.selectedCards.length &&
+          lp.cards.every(c => selectedIds.has(c.id))
+        )
+        if (!matchedPlay) {
+          this.playError = '无效跟牌：必须跟随首出花色和牌型，无法跟牌时可杀牌或垫牌'
+          return
+        }
       }
-      this.playerPlay(this.selectedCards)
+
+      this.playerPlay(this.selectedCards, matchedPlay.playType, matchedPlay.tractorLength)
       this.selectedCards = []
     },
-    playerPlay(cards: Card[]) {
+    playerPlay(cards: Card[], playType: PlayType, tractorLength?: number) {
       if (this.currentPlayer !== 0) return
-      const playType: 'single' | 'pair' | 'tractor' = cards.length === 1 ? 'single' : cards.length === 2 ? 'pair' : 'tractor'
-      const play: TrickPlay = { seat: 0, cards, playType }
+      const play: TrickPlay = { seat: 0, cards, playType, tractorLength }
       this.currentTrick.push(play)
       this.hands[0] = removeCards(this.hands[0], cards)
       this.selectedCards = []
+      this.playError = null
       this.advanceTurn()
     },
     advanceTurn() {
@@ -275,7 +309,7 @@ export const useGameStore = defineStore('game', {
         return
       }
       if (this.phase === 'playing') {
-        const cards = selectPlay(
+        const legalPlay = selectPlay(
           this.hands[seat],
           this.currentTrick,
           this.trumpSuit,
@@ -283,11 +317,10 @@ export const useGameStore = defineStore('game', {
           seat,
           this.difficulty,
         )
-        if (cards.length === 0) return
-        const playType: 'single' | 'pair' | 'tractor' = cards.length === 1 ? 'single' : cards.length === 2 ? 'pair' : 'tractor'
-        const play: TrickPlay = { seat, cards, playType }
+        if (!legalPlay || legalPlay.cards.length === 0) return
+        const play: TrickPlay = { seat, cards: legalPlay.cards, playType: legalPlay.playType, tractorLength: legalPlay.tractorLength }
         this.currentTrick.push(play)
-        this.hands[seat] = removeCards(this.hands[seat], cards)
+        this.hands[seat] = removeCards(this.hands[seat], legalPlay.cards)
         this.advanceTurn()
       }
     },
@@ -325,6 +358,11 @@ export const useGameStore = defineStore('game', {
       this.trickEnd = true
     },
     nextTrick() {
+      // 保存上一轮出牌记录
+      this.previousTrick = [...this.currentTrick]
+      this.previousTrickWinner = this.trickWinner
+      this.previousTrickNumber = this.trickNumber
+
       if (this.trickNumber >= 25) {
         this.trickEnd = false
         this.trickWinner = null
@@ -359,9 +397,13 @@ export const useGameStore = defineStore('game', {
       this.phase = 'start'
       this.selectedCards = []
       this.bottomSelectedCards = []
+      this.playError = null
       this.bidAnnouncement = null
       this.trickEnd = false
       this.trickWinner = null
+      this.previousTrick = null
+      this.previousTrickWinner = null
+      this.previousTrickNumber = null
     },
     nextRound() {
       if (this.autoPlayTimer) clearTimeout(this.autoPlayTimer)
@@ -380,6 +422,7 @@ export const useGameStore = defineStore('game', {
     },
     clearSelection() {
       this.selectedCards = []
+      this.playError = null
     },
   },
 })
